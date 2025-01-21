@@ -26,11 +26,11 @@ yolov5_model = yolov5.YOLOv5(
 )
 
 # 设置推理参数
-yolov5_model.conf = 0.6  # 设置置信度阈值
+yolov5_model.conf = 0.5  # 设置置信度阈值
 yolov5_model.iou = 0.45  # 设置NMS IOU阈值
 yolov5_model.agnostic = False  # 关闭类别无关的NMS
 yolov5_model.multi_label = False  # 单标签预测
-yolov5_model.max_det = 1  # 限制最大检测数量为1，因为我们只关注一个人
+yolov5_model.max_det = 10  # 允许检测多个人
 
 # 加载视频源（可以是摄像头或视频文件）
 # Load the video
@@ -75,33 +75,37 @@ while True:
   
   # 获取检测结果
   boxes = results.xyxy[0]  # 获取第一帧的检测框
-  if len(boxes) > 0:
-      # 获取第一个检测框（因为我们设置了 max_det=1）
-      box = boxes[0]
+  
+  # 处理每个检测到的人
+  for i, box in enumerate(boxes):
       x1, y1, x2, y2 = box[:4]  # 前4个值是边界框坐标
+      confidence = box[4]
+      class_id = box[5]
       
-      # 计算目标中心点坐标
-      centroid_x = int((x1 + x2) // 2)
-      centroid_y = int((y1 + y2) // 2)
-      
-      # 在图像上绘制边界框
-      cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
-      
-      # 设置padding并提取人物区域
-      padding = 25
-      person = frame[int(y1):int(y2), int(x1):int(x2)]
-      
-      try:  # 使用mediapipe处理人物图像
-          shoulder_y, jump_info = process_image(person)
-          # 在画面上显示信息
-          cv2.putText(frame, f"Shoulder Y: {shoulder_y:.2f}", (10, 30), 
-                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-          cv2.putText(frame, f"Jump: {jump_info}", (10, 70), 
-                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-          # 同时在控制台打印
-          print(f"Shoulder Y: {shoulder_y:.2f}, Jump: {jump_info}")
-      except Exception as e:
-          logging.error(f"处理图像时发生错误: {str(e)}")
+      # 只处理人的检测结果
+      if class_id == 0 and confidence >= 0.5:  # class_id 0 表示人
+          # 计算目标中心点坐标
+          centroid_x = int((x1 + x2) // 2)
+          centroid_y = int((y1 + y2) // 2)
+          
+          # 在图像上绘制边界框
+          cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
+          
+          # 设置padding并提取人物区域
+          padding = 25
+          person = frame[int(y1):int(y2), int(x1):int(x2)]
+          
+          try:  # 使用mediapipe处理人物图像
+              shoulder_y, jump_info = process_image(person, i)  # 传入人物ID
+              # 在每个人物上方显示信息
+              text = f"Person {i+1} - Y: {shoulder_y:.2f}, {jump_info}"
+              cv2.putText(frame, text, 
+                         (int(x1), int(y1) - 10), 
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+              # 同时在控制台打印
+              print(f"Person {i+1} - Shoulder Y: {shoulder_y:.2f}, Jump: {jump_info}")
+          except Exception as e:
+              logging.error(f"处理图像时发生错误: {str(e)}")
 
   # 显示处理后的帧
   # Display the frame

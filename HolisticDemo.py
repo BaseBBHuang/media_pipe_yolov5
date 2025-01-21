@@ -127,7 +127,19 @@ def clean_inactive_detectors(max_inactive_time: int = 300):
     for pid in inactive_ids:
         del detectors[pid]
 
-def process_image(image):
+# 用于存储每个人的上一次Y坐标
+last_y_positions = {}
+
+def process_image(image, person_id):
+    """处理图像并检测跳跃
+    
+    Args:
+        image: 输入图像
+        person_id: 人物ID，用于跟踪不同的人
+        
+    Returns:
+        tuple: (shoulder_y, jump_info) 肩部Y坐标和跳跃状态
+    """
     # 创建 Holistic 对象
     with mp_holistic.Holistic(
         min_detection_confidence=0.5,
@@ -152,8 +164,8 @@ def process_image(image):
             shoulder_y = (left_shoulder.y + right_shoulder.y) / 2
             
             # 跳跃检测
-            if hasattr(process_image, 'last_y'):
-                y_change = process_image.last_y - shoulder_y
+            if person_id in last_y_positions:
+                y_change = last_y_positions[person_id] - shoulder_y
                 if y_change > 0.1:  # 向上移动超过阈值
                     jump_info = "Jumping Up"
                 elif y_change < -0.1:  # 向下移动超过阈值
@@ -161,7 +173,8 @@ def process_image(image):
                 else:
                     jump_info = "Standing"
             
-            process_image.last_y = shoulder_y
+            # 更新该人物的上一次Y坐标
+            last_y_positions[person_id] = shoulder_y
         
         return shoulder_y if shoulder_y is not None else 0.0, jump_info
 
@@ -179,7 +192,7 @@ if __name__ == "__main__":
 
             # 处理图像
             try:
-                shoulder_y, jump_info = process_image(image)
+                shoulder_y, jump_info = process_image(image, 0)  # 使用固定person_id 0
             except Exception as e:
                 logging.error(f"处理图像时出错: {str(e)}")
                 continue
