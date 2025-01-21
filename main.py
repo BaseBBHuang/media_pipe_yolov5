@@ -97,11 +97,28 @@ while True:
           
           try:  # 使用mediapipe处理人物图像
               shoulder_y, jump_info = process_image(person, i)  # 传入人物ID
+              
+              # 根据跳跃状态选择颜色
+              color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)  # 跳跃时为红色，否则为绿色
+              
               # 在每个人物上方显示信息
-              text = f"Person {i+1} - Y: {shoulder_y:.2f}, {jump_info}"
+              text = f"Person {i+1} - Y: {shoulder_y:.2f}"
+              # 先显示人物ID和Y坐标
               cv2.putText(frame, text, 
-                         (int(x1), int(y1) - 10), 
-                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                         (int(x1), int(y1) - 45),  # 位置上移
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,  # 字体大小增大
+                         (0, 255, 0),  # 绿色
+                         2)
+              
+              # 再显示跳跃状态
+              cv2.putText(frame, jump_info, 
+                         (int(x1), int(y1) - 10),  # 显示在下方
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.2,  # 跳跃状态字体更大
+                         color,  # 使用根据状态确定的颜色
+                         3)  # 更粗的线条
+              
               # 同时在控制台打印
               print(f"Person {i+1} - Shoulder Y: {shoulder_y:.2f}, Jump: {jump_info}")
           except Exception as e:
