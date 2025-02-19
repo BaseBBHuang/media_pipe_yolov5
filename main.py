@@ -4,12 +4,21 @@ from HolisticDemo import process_image
 import logging
 import os
 import torch
+from pynput.keyboard import Controller
+import time
+
+# 初始化键盘控制器
+keyboard = Controller()
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 
 # 配置CPU线程数以优化性能
 torch.set_num_threads(4)  # 设置PyTorch CPU线程数，根据CPU核心数调整
+
+# 用于存储上一次按键的时间
+last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0}
+KEY_PRESS_COOLDOWN = 0.5  # 按键冷却时间（秒）
 
 # 检查模型文件是否存在
 # Check if model file exists
@@ -73,8 +82,9 @@ while True:
   # Use YOLOv5 for object detection
   results = yolov5_model.predict(frame)
   
-  # 获取检测结果
+  # 获取检测结果并存储人物信息
   boxes = results.xyxy[0]  # 获取第一帧的检测框
+  people = []
   
   # 处理每个检测到的人
   for i, box in enumerate(boxes):
@@ -88,41 +98,75 @@ while True:
           centroid_x = int((x1 + x2) // 2)
           centroid_y = int((y1 + y2) // 2)
           
-          # 在图像上绘制边界框
-          cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 1)
+          # 将人物信息存储到列表中
+          people.append({
+              'id': i,
+              'x1': int(x1),
+              'y1': int(y1),
+              'x2': int(x2),
+              'y2': int(y2),
+              'centroid_x': centroid_x,
+              'box': box
+          })
+  
+  # 根据x坐标排序人物（从左到右）
+  people.sort(key=lambda p: p['centroid_x'])
+  
+  # 限制最多处理4个人
+  people = people[:4]
+  
+  # 键盘映射
+  key_mapping = ['a', 'b', 'c', 'd']
+  
+  # 处理排序后的人物
+  for index, person_info in enumerate(people):
+      i = person_info['id']
+      x1, y1 = person_info['x1'], person_info['y1']
+      x2, y2 = person_info['x2'], person_info['y2']
+      
+      # 在图像上绘制边界框
+      cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 1)
+      
+      # 提取人物区域
+      person = frame[y1:y2, x1:x2]
+      
+      try:
+          # 使用mediapipe处理人物图像
+          shoulder_y, jump_info = process_image(person, i)
           
-          # 设置padding并提取人物区域
-          padding = 25
-          person = frame[int(y1):int(y2), int(x1):int(x2)]
+          # 根据跳跃状态选择颜色
+          color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)
           
-          try:  # 使用mediapipe处理人物图像
-              shoulder_y, jump_info = process_image(person, i)  # 传入人物ID
-              
-              # 根据跳跃状态选择颜色
-              color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)  # 跳跃时为红色，否则为绿色
-              
-              # 在每个人物上方显示信息
-              text = f"Person {i+1} - Y: {shoulder_y:.2f}"
-              # 先显示人物ID和Y坐标
-              cv2.putText(frame, text, 
-                         (int(x1), int(y1) - 45),  # 位置上移
-                         cv2.FONT_HERSHEY_SIMPLEX, 
-                         1.0,  # 字体大小增大
-                         (0, 255, 0),  # 绿色
-                         2)
-              
-              # 再显示跳跃状态
-              cv2.putText(frame, jump_info, 
-                         (int(x1), int(y1) - 10),  # 显示在下方
-                         cv2.FONT_HERSHEY_SIMPLEX, 
-                         1.2,  # 跳跃状态字体更大
-                         color,  # 使用根据状态确定的颜色
-                         3)  # 更粗的线条
-              
-              # 同时在控制台打印
-              print(f"Person {i+1} - Shoulder Y: {shoulder_y:.2f}, Jump: {jump_info}")
-          except Exception as e:
-              logging.error(f"处理图像时发生错误: {str(e)}")
+          # 获取对应的按键
+          key = key_mapping[index]
+          
+          # 在每个人物上方显示信息
+          text = f"Person {index+1} (Key: {key.upper()}) - Y: {shoulder_y:.2f}"
+          cv2.putText(frame, text, 
+                     (x1, y1 - 45),
+                     cv2.FONT_HERSHEY_SIMPLEX, 
+                     1.0,
+                     (0, 255, 0),
+                     2)
+          
+          # 显示跳跃状态
+          cv2.putText(frame, jump_info, 
+                     (x1, y1 - 10),
+                     cv2.FONT_HERSHEY_SIMPLEX, 
+                     1.2,
+                     color,
+                     3)
+          
+          # 如果检测到跳跃，且超过冷却时间，则触发按键
+          current_time = time.time()
+          if "Jump" in jump_info and (current_time - last_key_press[key]) > KEY_PRESS_COOLDOWN:
+              keyboard.press(key)
+              keyboard.release(key)
+              last_key_press[key] = current_time
+              logging.info(f"触发按键 {key.upper()} (Person {index+1})")
+          
+      except Exception as e:
+          logging.error(f"处理图像时发生错误: {str(e)}")
 
   # 显示处理后的帧
   # Display the frame
