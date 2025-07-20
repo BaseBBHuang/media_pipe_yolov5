@@ -267,7 +267,7 @@ while True:
                       try:
                           keyboard.press(key)
                           keyboard.press(jump_key)
-                          time.sleep(0.1)
+                        #   time.sleep(0.1)
                           keyboard.release(jump_key)
                           keyboard.release(key)
                           logging.info(f"使用 pynput 触发组合按键 {jump_text} (Person {index+1})")
