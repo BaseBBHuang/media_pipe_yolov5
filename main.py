@@ -4,7 +4,8 @@ from HolisticDemo import process_image
 import logging
 import os
 import torch
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key
+import pyautogui  # 导入 pyautogui 库
 import time
 
 # 初始化键盘控制器
@@ -17,7 +18,9 @@ logging.basicConfig(level=logging.INFO)
 torch.set_num_threads(4)  # 设置PyTorch CPU线程数，根据CPU核心数调整
 
 # 用于存储上一次按键的时间
-last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0, 'f': 0, 'g': 0}
+last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0, 'f': 0, 'g': 0, '1': 0, '2': 0, '3': 0, '4': 0}
+# 为功能键创建单独的字典
+last_function_key_press = {1: 0, 2: 0, 3: 0, 4: 0}  # 使用数字作为键
 KEY_PRESS_COOLDOWN = 0.5  # 按键冷却时间（秒）
 
 # 检查模型文件是否存在
@@ -134,7 +137,7 @@ while True:
       
       try:
           # 使用mediapipe处理人物图像
-          shoulder_y, jump_info, hands_clenched, hands_joined = process_image(person, i)
+          shoulder_y, jump_info, hands_clenched, hands_joined, jump_height = process_image(person, i)
           
           # 根据跳跃状态选择颜色
           color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)
@@ -212,12 +215,64 @@ while True:
           
           current_time = time.time()
           
-          # 如果检测到跳跃，且超过冷却时间，则触发按键
-          if "Jump" in jump_info and (current_time - last_key_press[key]) > KEY_PRESS_COOLDOWN:
-              keyboard.press(key)
-              keyboard.release(key)
-              last_key_press[key] = current_time
-              logging.info(f"触发按键 {key.upper()} (Person {index+1})")
+          # 如果检测到跳跃，且超过冷却时间，则根据跳跃高度触发不同的按键
+          if "Jump" in jump_info and jump_height > 0.05:  # 只有当跳跃高度超过阈值时才触发
+              # 根据跳跃高度确定跳跃等级
+              jump_level = 0
+              if jump_height < 0.1:
+                  jump_level = 1
+                  jump_key = '1'  # 使用数字键 1
+                  jump_text = f"{key.upper()} 和 1"
+              elif jump_height < 0.15:
+                  jump_level = 2
+                  jump_key = '2'  # 使用数字键 2
+                  jump_text = f"{key.upper()} 和 2"
+              elif jump_height < 0.2:
+                  jump_level = 3
+                  jump_key = '3'  # 使用数字键 3
+                  jump_text = f"{key.upper()} 和 3"
+              else:
+                  jump_level = 4
+                  jump_key = '4'  # 使用数字键 4
+                  jump_text = f"{key.upper()} 和 4"
+              
+              # 显示跳跃等级
+              cv2.putText(frame, f"Jump Level: {jump_level} ({jump_text})", 
+                         (x1, y1 - 150),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         (0, 255, 255),  # 黄色
+                         2)
+              
+              # 如果超过冷却时间，则触发按键
+              if (current_time - last_key_press[jump_key]) > KEY_PRESS_COOLDOWN:
+                  try:
+                      # 使用 pyautogui 模拟组合键输入
+                      # 方法1：使用 hotkey 函数同时按下两个键
+                      pyautogui.hotkey(key, jump_key)
+                      
+                      # 方法2：如果方法1不起作用，尝试使用 keyDown 和 keyUp
+                      # pyautogui.keyDown(key)
+                      # pyautogui.keyDown(jump_key)
+                      # time.sleep(0.1)  # 保持按下状态
+                      # pyautogui.keyUp(jump_key)
+                      # pyautogui.keyUp(key)
+                      
+                      last_key_press[jump_key] = current_time
+                      logging.info(f"使用 pyautogui 触发组合按键 {jump_text} (Person {index+1}, 高度: {jump_height:.3f})")
+                  except Exception as e:
+                      logging.error(f"触发按键时出错: {str(e)}")
+                      
+                      # 如果 pyautogui 失败，尝试使用 pynput
+                      try:
+                          keyboard.press(key)
+                          keyboard.press(jump_key)
+                          time.sleep(0.1)
+                          keyboard.release(jump_key)
+                          keyboard.release(key)
+                          logging.info(f"使用 pynput 触发组合按键 {jump_text} (Person {index+1})")
+                      except Exception as e2:
+                          logging.error(f"pynput 触发按键也失败: {str(e2)}")
           
           # 如果检测到双手紧握，且超过冷却时间，则触发F键
           if hands_clenched and (current_time - last_key_press['f']) > KEY_PRESS_COOLDOWN:

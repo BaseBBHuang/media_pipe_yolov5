@@ -260,7 +260,7 @@ def process_image(image, person_id):
         person_id: 人物ID，用于跟踪不同的人
         
     Returns:
-        tuple: (shoulder_y, jump_info, hands_clenched, hands_joined) 肩部Y坐标、跳跃状态、双手紧握状态和双手合十状态
+        tuple: (shoulder_y, jump_info, hands_clenched, hands_joined, jump_height) 肩部Y坐标、跳跃状态、双手紧握状态、双手合十状态和跳跃高度
     """
     # 创建 Holistic 对象
     with mp_holistic.Holistic(
@@ -278,6 +278,7 @@ def process_image(image, person_id):
         jump_info = "No Jump"
         hands_clenched = False
         hands_joined = False
+        jump_height = 0.0  # 跳跃高度
         
         # 获取图像尺寸
         height, width, _ = image.shape
@@ -293,6 +294,8 @@ def process_image(image, person_id):
             # 跳跃检测
             if person_id in last_y_positions:
                 y_change = last_y_positions[person_id] - shoulder_y
+                jump_height = y_change  # 记录跳跃高度
+                
                 if y_change > 0.1:  # 向上移动超过阈值
                     jump_info = "Jumping Up"
                 elif y_change < -0.1:  # 向下移动超过阈值
@@ -310,7 +313,7 @@ def process_image(image, person_id):
             # 检测双手合十
             hands_joined = check_hands_joined(results, width, height)
             
-        return shoulder_y if shoulder_y is not None else 0.0, jump_info, hands_clenched, hands_joined
+        return shoulder_y if shoulder_y is not None else 0.0, jump_info, hands_clenched, hands_joined, jump_height
 
 if __name__ == "__main__":
     try:
@@ -326,7 +329,7 @@ if __name__ == "__main__":
 
             # 处理图像
             try:
-                shoulder_y, jump_info, hands_clenched, hands_joined = process_image(image, 0)  # 使用固定person_id 0
+                shoulder_y, jump_info, hands_clenched, hands_joined, jump_height = process_image(image, 0)  # 使用固定person_id 0
             except Exception as e:
                 logging.error(f"处理图像时出错: {str(e)}")
                 continue
