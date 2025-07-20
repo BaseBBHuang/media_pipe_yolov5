@@ -134,6 +134,9 @@ last_y_positions = {}
 # 用于存储每个人的手部状态
 hand_states = {}
 
+# 用于存储每个人的双手合十状态
+hands_joined_states = {}
+
 def calculate_hand_distance(hand_landmarks, image_width, image_height):
     """计算手部关键点之间的距离，用于判断手是否紧握
     
@@ -196,6 +199,59 @@ def is_hands_clenched(results, image_width, image_height):
     
     return is_left_clenched and is_right_clenched
 
+def check_hands_joined(results, image_width, image_height):
+    """检测双手是否合十
+    
+    Args:
+        results: MediaPipe处理结果
+        image_width: 图像宽度
+        image_height: 图像高度
+        
+    Returns:
+        是否检测到双手合十
+    """
+    # 检查是否同时检测到左右手
+    if not results.left_hand_landmarks or not results.right_hand_landmarks:
+        return False
+    
+    # 获取左右手的关键点
+    left_hand_landmarks = results.left_hand_landmarks
+    right_hand_landmarks = results.right_hand_landmarks
+    
+    # 计算左右手的距离
+    # 我们使用食指指尖(8)、中指指尖(12)和无名指指尖(16)的平均位置来判断
+    left_index_tip = np.array([left_hand_landmarks.landmark[8].x * image_width,
+                              left_hand_landmarks.landmark[8].y * image_height])
+    left_middle_tip = np.array([left_hand_landmarks.landmark[12].x * image_width,
+                               left_hand_landmarks.landmark[12].y * image_height])
+    left_ring_tip = np.array([left_hand_landmarks.landmark[16].x * image_width,
+                             left_hand_landmarks.landmark[16].y * image_height])
+    
+    right_index_tip = np.array([right_hand_landmarks.landmark[8].x * image_width,
+                               right_hand_landmarks.landmark[8].y * image_height])
+    right_middle_tip = np.array([right_hand_landmarks.landmark[12].x * image_width,
+                                right_hand_landmarks.landmark[12].y * image_height])
+    right_ring_tip = np.array([right_hand_landmarks.landmark[16].x * image_width,
+                              right_hand_landmarks.landmark[16].y * image_height])
+    
+    # 计算左右手指尖之间的距离
+    index_distance = np.linalg.norm(left_index_tip - right_index_tip)
+    middle_distance = np.linalg.norm(left_middle_tip - right_middle_tip)
+    ring_distance = np.linalg.norm(left_ring_tip - right_ring_tip)
+    
+    # 计算平均距离
+    avg_distance = (index_distance + middle_distance + ring_distance) / 3
+    
+    # 设置阈值，当距离小于阈值时认为双手合十
+    # 这个阈值需要根据实际情况调整
+    threshold = image_width * 0.1  # 图像宽度的10%作为阈值
+    
+    # 记录距离信息
+    logging.info(f"双手指尖平均距离: {avg_distance:.2f}, 阈值: {threshold:.2f}")
+    
+    # 当双手指尖距离小于阈值时，认为双手合十
+    return avg_distance < threshold
+
 def process_image(image, person_id):
     """处理图像并检测跳跃和手势
     
@@ -204,7 +260,7 @@ def process_image(image, person_id):
         person_id: 人物ID，用于跟踪不同的人
         
     Returns:
-        tuple: (shoulder_y, jump_info, hands_clenched) 肩部Y坐标、跳跃状态和双手紧握状态
+        tuple: (shoulder_y, jump_info, hands_clenched, hands_joined) 肩部Y坐标、跳跃状态、双手紧握状态和双手合十状态
     """
     # 创建 Holistic 对象
     with mp_holistic.Holistic(
@@ -221,6 +277,7 @@ def process_image(image, person_id):
         shoulder_y = None
         jump_info = "No Jump"
         hands_clenched = False
+        hands_joined = False
         
         # 获取图像尺寸
         height, width, _ = image.shape
@@ -250,7 +307,10 @@ def process_image(image, person_id):
         if results is not None:
             hands_clenched = is_hands_clenched(results, width, height)
             
-        return shoulder_y if shoulder_y is not None else 0.0, jump_info, hands_clenched
+            # 检测双手合十
+            hands_joined = check_hands_joined(results, width, height)
+            
+        return shoulder_y if shoulder_y is not None else 0.0, jump_info, hands_clenched, hands_joined
 
 if __name__ == "__main__":
     try:
@@ -266,7 +326,7 @@ if __name__ == "__main__":
 
             # 处理图像
             try:
-                shoulder_y, jump_info, hands_clenched = process_image(image, 0)  # 使用固定person_id 0
+                shoulder_y, jump_info, hands_clenched, hands_joined = process_image(image, 0)  # 使用固定person_id 0
             except Exception as e:
                 logging.error(f"处理图像时出错: {str(e)}")
                 continue
@@ -274,6 +334,7 @@ if __name__ == "__main__":
             # 显示结果
             cv2.putText(image, f"Shoulder Y: {shoulder_y:.2f}, Jump Info: {jump_info}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             cv2.putText(image, f"Hands Clenched: {hands_clenched}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(image, f"Hands Joined: {hands_joined}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
             cv2.imshow('MediaPipe Jump Detection', cv2.flip(image, 1))
             if cv2.waitKey(1) & 0xFF == 27:  # 按ESC退出
                 break

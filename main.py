@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 torch.set_num_threads(4)  # 设置PyTorch CPU线程数，根据CPU核心数调整
 
 # 用于存储上一次按键的时间
-last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0, 'f': 0}
+last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0, 'f': 0, 'g': 0}
 KEY_PRESS_COOLDOWN = 0.5  # 按键冷却时间（秒）
 
 # 检查模型文件是否存在
@@ -134,7 +134,7 @@ while True:
       
       try:
           # 使用mediapipe处理人物图像
-          shoulder_y, jump_info, hands_clenched = process_image(person, i)
+          shoulder_y, jump_info, hands_clenched, hands_joined = process_image(person, i)
           
           # 根据跳跃状态选择颜色
           color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)
@@ -189,6 +189,27 @@ while True:
                          hands_color,
                          2)
           
+          # 显示双手合十状态，增强视觉标识
+          if hands_joined:
+              joined_text = "HANDS JOINED! (G)"
+              joined_color = (255, 165, 0)  # 橙色
+              # 在人物周围绘制明显的橙色边框
+              cv2.rectangle(frame, (x1-15, y1-15), (x2+15, y2+15), (255, 165, 0), 4)
+              # 在人物上方绘制明显的标识
+              cv2.putText(frame, joined_text, 
+                         (x1, y1 - 115),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         joined_color,
+                         2)
+              # 在画面顶部显示全局提示
+              cv2.putText(frame, "HANDS JOINED DETECTED!", 
+                         (width // 2 - 200, 70),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         (255, 165, 0),
+                         2)
+          
           current_time = time.time()
           
           # 如果检测到跳跃，且超过冷却时间，则触发按键
@@ -204,6 +225,13 @@ while True:
               keyboard.release('f')
               last_key_press['f'] = current_time
               logging.info(f"检测到双手紧握，触发按键 F (Person {index+1})")
+          
+          # 如果检测到双手合十，且超过冷却时间，则触发G键
+          if hands_joined and (current_time - last_key_press['g']) > KEY_PRESS_COOLDOWN:
+              keyboard.press('g')
+              keyboard.release('g')
+              last_key_press['g'] = current_time
+              logging.info(f"检测到双手合十，触发按键 G (Person {index+1})")
           
       except Exception as e:
           logging.error(f"处理图像时发生错误: {str(e)}")
