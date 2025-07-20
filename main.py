@@ -28,11 +28,17 @@ if not os.path.exists(model_path):
 
 # 加载YOLOv5模型
 # Load the YOLOv5 model
-yolov5_model = yolov5.YOLOv5(
-    model_path,
-    device='cpu',
-    load_on_init=True
-)
+try:
+    # 尝试直接加载本地模型文件
+    yolov5_model = yolov5.YOLOv5(
+        model_path,
+        device='cpu',
+        load_on_init=True
+    )
+    logging.info("成功加载本地YOLOv5模型")
+except Exception as e:
+    logging.error(f"加载YOLOv5模型失败: {str(e)}")
+    raise
 
 # 设置推理参数
 yolov5_model.conf = 0.5  # 设置置信度阈值
@@ -45,6 +51,14 @@ yolov5_model.max_det = 10  # 允许检测多个人
 # Load the video
 video = cv2.VideoCapture(0)  # 0表示使用默认摄像头
 if not video.isOpened():
+    print("\n摄像头无法打开！可能的原因：")
+    print("1. 系统没有授予摄像头访问权限")
+    print("2. 摄像头被其他应用程序占用")
+    print("3. 系统没有检测到摄像头设备")
+    print("\n请尝试以下解决方案：")
+    print("- 在系统偏好设置 > 安全性与隐私 > 隐私 > 相机中授予权限")
+    print("- 关闭可能正在使用摄像头的其他应用程序")
+    print("- 重新连接摄像头或重启电脑")
     raise RuntimeError("无法打开摄像头")
 
 # 获取视频的宽度、高度和帧率
