@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 torch.set_num_threads(4)  # 设置PyTorch CPU线程数，根据CPU核心数调整
 
 # 用于存储上一次按键的时间
-last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0}
+last_key_press = {'a': 0, 'b': 0, 'c': 0, 'd': 0, 'f': 0}
 KEY_PRESS_COOLDOWN = 0.5  # 按键冷却时间（秒）
 
 # 检查模型文件是否存在
@@ -69,20 +69,8 @@ fps = int(video.get(cv2.CAP_PROP_FPS))
 if fps == 0:
     fps = 30  # 使用默认帧率
 
-# 创建VideoWriter对象用于保存处理后的视频
-# Create a VideoWriter object to save the video
-output_file = 'output_video.mp4'  # 指定输出视频文件名
-# 尝试不同的编码器
-try:
-    video_writer = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'avc1'), fps, (width, height))
-except:
-    try:
-        video_writer = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-    except:
-        video_writer = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*'XVID'), fps, (width, height))
-
-if not video_writer.isOpened():
-    raise RuntimeError("无法创建视频写入器")
+# 移除视频保存功能
+logging.info("视频输出功能已禁用")
 
 # 逐帧处理视频
 # Process each frame of the video
@@ -146,7 +134,7 @@ while True:
       
       try:
           # 使用mediapipe处理人物图像
-          shoulder_y, jump_info = process_image(person, i)
+          shoulder_y, jump_info, hands_clenched = process_image(person, i)
           
           # 根据跳跃状态选择颜色
           color = (0, 0, 255) if "Jump" in jump_info else (0, 255, 0)
@@ -171,13 +159,51 @@ while True:
                      color,
                      3)
           
-          # 如果检测到跳跃，且超过冷却时间，则触发按键
+          # 显示双手紧握状态，增强视觉标识
+          if hands_clenched:
+              hands_text = "HANDS CLENCHED! (F)"
+              hands_color = (0, 0, 255)  # 红色
+              # 在人物周围绘制明显的红色边框
+              cv2.rectangle(frame, (x1-10, y1-10), (x2+10, y2+10), (0, 0, 255), 3)
+              # 在人物上方绘制明显的标识
+              cv2.putText(frame, hands_text, 
+                         (x1, y1 - 80),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         hands_color,
+                         2)
+              # 在画面顶部显示全局提示
+              cv2.putText(frame, "HANDS CLENCHED DETECTED!", 
+                         (width // 2 - 200, 30),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         (0, 0, 255),
+                         2)
+          else:
+              hands_text = "Hands Open"
+              hands_color = (255, 0, 0)  # 蓝色
+              cv2.putText(frame, hands_text, 
+                         (x1, y1 - 80),
+                         cv2.FONT_HERSHEY_SIMPLEX, 
+                         1.0,
+                         hands_color,
+                         2)
+          
           current_time = time.time()
+          
+          # 如果检测到跳跃，且超过冷却时间，则触发按键
           if "Jump" in jump_info and (current_time - last_key_press[key]) > KEY_PRESS_COOLDOWN:
               keyboard.press(key)
               keyboard.release(key)
               last_key_press[key] = current_time
               logging.info(f"触发按键 {key.upper()} (Person {index+1})")
+          
+          # 如果检测到双手紧握，且超过冷却时间，则触发F键
+          if hands_clenched and (current_time - last_key_press['f']) > KEY_PRESS_COOLDOWN:
+              keyboard.press('f')
+              keyboard.release('f')
+              last_key_press['f'] = current_time
+              logging.info(f"检测到双手紧握，触发按键 F (Person {index+1})")
           
       except Exception as e:
           logging.error(f"处理图像时发生错误: {str(e)}")
@@ -185,7 +211,6 @@ while True:
   # 显示处理后的帧
   # Display the frame
   cv2.imshow("Video", frame)
-  video_writer.write(frame)  # 将处理后的帧写入输出视频
   # 按'q'键退出程序
   if cv2.waitKey(1) & 0xFF == ord('q'):
     break
@@ -193,7 +218,6 @@ while True:
 # 释放资源
 # Release the video capture object
 video.release()
-video_writer.release()
 
 # 关闭所有窗口
 cv2.destroyAllWindows()

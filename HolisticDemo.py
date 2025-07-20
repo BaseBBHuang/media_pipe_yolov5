@@ -3,7 +3,8 @@ import mediapipe as mp
 import numpy as np
 import uuid
 import logging
-from typing import Tuple, Optional
+import math
+from typing import Tuple, Optional, Dict, Any
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -130,15 +131,80 @@ def clean_inactive_detectors(max_inactive_time: int = 300):
 # 用于存储每个人的上一次Y坐标
 last_y_positions = {}
 
+# 用于存储每个人的手部状态
+hand_states = {}
+
+def calculate_hand_distance(hand_landmarks, image_width, image_height):
+    """计算手部关键点之间的距离，用于判断手是否紧握
+    
+    Args:
+        hand_landmarks: MediaPipe手部关键点
+        image_width: 图像宽度
+        image_height: 图像高度
+        
+    Returns:
+        手指尖与手掌中心的平均距离
+    """
+    if not hand_landmarks:
+        return 0
+    
+    # 获取手掌中心点
+    palm_center_x = hand_landmarks.landmark[9].x * image_width  # 中指掌指关节
+    palm_center_y = hand_landmarks.landmark[9].y * image_height
+    
+    # 计算各指尖到手掌中心的距离
+    finger_tips = [4, 8, 12, 16, 20]  # 拇指、食指、中指、无名指、小指的指尖索引
+    distances = []
+    
+    for tip in finger_tips:
+        tip_x = hand_landmarks.landmark[tip].x * image_width
+        tip_y = hand_landmarks.landmark[tip].y * image_height
+        distance = math.sqrt((tip_x - palm_center_x)**2 + (tip_y - palm_center_y)**2)
+        distances.append(distance)
+    
+    # 返回平均距离
+    return sum(distances) / len(distances) if distances else 0
+
+def is_hands_clenched(results, image_width, image_height):
+    """检测双手是否紧握
+    
+    Args:
+        results: MediaPipe处理结果
+        image_width: 图像宽度
+        image_height: 图像高度
+        
+    Returns:
+        是否检测到双手紧握
+    """
+    # 检查是否同时检测到左右手
+    if not results.left_hand_landmarks or not results.right_hand_landmarks:
+        return False
+    
+    # 计算左右手的手指距离
+    left_distance = calculate_hand_distance(results.left_hand_landmarks, image_width, image_height)
+    right_distance = calculate_hand_distance(results.right_hand_landmarks, image_width, image_height)
+    
+    # 设置阈值，当距离小于阈值时认为手是紧握的
+    # 这个阈值需要根据实际情况调整
+    threshold = image_width * 0.05  # 图像宽度的5%作为阈值
+    
+    # 当左右手都紧握时返回True
+    is_left_clenched = left_distance < threshold
+    is_right_clenched = right_distance < threshold
+    
+    logging.info(f"左手距离: {left_distance:.2f}, 右手距离: {right_distance:.2f}, 阈值: {threshold:.2f}")
+    
+    return is_left_clenched and is_right_clenched
+
 def process_image(image, person_id):
-    """处理图像并检测跳跃
+    """处理图像并检测跳跃和手势
     
     Args:
         image: 输入图像
         person_id: 人物ID，用于跟踪不同的人
         
     Returns:
-        tuple: (shoulder_y, jump_info) 肩部Y坐标和跳跃状态
+        tuple: (shoulder_y, jump_info, hands_clenched) 肩部Y坐标、跳跃状态和双手紧握状态
     """
     # 创建 Holistic 对象
     with mp_holistic.Holistic(
@@ -154,6 +220,10 @@ def process_image(image, person_id):
         # 获取肩部中心点的Y坐标
         shoulder_y = None
         jump_info = "No Jump"
+        hands_clenched = False
+        
+        # 获取图像尺寸
+        height, width, _ = image.shape
         
         if results.pose_landmarks:
             # 获取左右肩的坐标
@@ -176,7 +246,11 @@ def process_image(image, person_id):
             # 更新该人物的上一次Y坐标
             last_y_positions[person_id] = shoulder_y
         
-        return shoulder_y if shoulder_y is not None else 0.0, jump_info
+        # 检测双手紧握
+        if results is not None:
+            hands_clenched = is_hands_clenched(results, width, height)
+            
+        return shoulder_y if shoulder_y is not None else 0.0, jump_info, hands_clenched
 
 if __name__ == "__main__":
     try:
@@ -192,13 +266,14 @@ if __name__ == "__main__":
 
             # 处理图像
             try:
-                shoulder_y, jump_info = process_image(image, 0)  # 使用固定person_id 0
+                shoulder_y, jump_info, hands_clenched = process_image(image, 0)  # 使用固定person_id 0
             except Exception as e:
                 logging.error(f"处理图像时出错: {str(e)}")
                 continue
 
             # 显示结果
             cv2.putText(image, f"Shoulder Y: {shoulder_y:.2f}, Jump Info: {jump_info}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.putText(image, f"Hands Clenched: {hands_clenched}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.imshow('MediaPipe Jump Detection', cv2.flip(image, 1))
             if cv2.waitKey(1) & 0xFF == 27:  # 按ESC退出
                 break
