@@ -191,7 +191,7 @@ while True:
           
           # 显示双手合十状态，增强视觉标识
           if hands_joined:
-              joined_text = "HANDS JOINED! (G)"
+              joined_text = "HANDS JOINED! (F)"
               joined_color = (255, 165, 0)  # 橙色
               # 在人物周围绘制明显的橙色边框
               cv2.rectangle(frame, (x1-15, y1-15), (x2+15, y2+15), (255, 165, 0), 4)
@@ -226,12 +226,12 @@ while True:
               last_key_press['f'] = current_time
               logging.info(f"检测到双手紧握，触发按键 F (Person {index+1})")
           
-          # 如果检测到双手合十，且超过冷却时间，则触发G键
-          if hands_joined and (current_time - last_key_press['g']) > KEY_PRESS_COOLDOWN:
-              keyboard.press('g')
-              keyboard.release('g')
-              last_key_press['g'] = current_time
-              logging.info(f"检测到双手合十，触发按键 G (Person {index+1})")
+          # 如果检测到双手合十，且超过冷却时间，则触发F键
+          if hands_joined and (current_time - last_key_press['f']) > KEY_PRESS_COOLDOWN:
+              keyboard.press('f')
+              keyboard.release('f')
+              last_key_press['f'] = current_time
+              logging.info(f"检测到双手合十，触发按键 F (Person {index+1})")
           
       except Exception as e:
           logging.error(f"处理图像时发生错误: {str(e)}")
